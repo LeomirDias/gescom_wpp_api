@@ -2,7 +2,6 @@ import { z } from "zod";
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 const CORRELATION_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
-const WINDOWS_ABSOLUTE_PATH_REGEX = /^[A-Za-z]:\\.+/;
 const FILENAME_REGEX = /^[\w\-.\s()]+\.[A-Za-z0-9]{2,6}$/;
 
 const ALLOWED_DOCUMENT_MIME_TYPES = [
@@ -18,14 +17,6 @@ const ALLOWED_DOCUMENT_MIME_TYPES = [
 
 const documentoSchema = z
   .object({
-    path: z
-      .string()
-      .trim()
-      .regex(
-        WINDOWS_ABSOLUTE_PATH_REGEX,
-        "Campo 'document.path' deve ser um caminho absoluto local do Windows (ex.: C:\\\\pasta\\\\arquivo.pdf)",
-      )
-      .max(4096, "Campo 'document.path' excede o limite de 4096 caracteres"),
     caption: z
       .string()
       .trim()

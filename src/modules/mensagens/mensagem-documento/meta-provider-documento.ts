@@ -1,12 +1,11 @@
 import type { AxiosInstance } from "axios";
-import { readFile } from "node:fs/promises";
 import {
   buildMetaMediaPath,
   buildMetaMessagesPath,
   metaHttpClient,
 } from "../../../shared/http/meta-http-client";
 import type { SendDocumentMessageJobPayload } from "../../../shared/queue/queue-connection.interface";
-import type { LocalDocumentFile } from "./document-local-file";
+import type { LoadedDocument } from "./storage-documento";
 import {
   fromMetaSendDocumentMessageResponse,
   toMetaDocumentMessagePayload,
@@ -31,9 +30,9 @@ export class MetaDocumentProvider {
 
   public async sendDocumentMessage(
     job: SendDocumentMessageJobPayload,
-    localDocument: LocalDocumentFile,
+    document: LoadedDocument,
   ): Promise<SendDocumentMessageResult> {
-    const mediaId = await this.uploadDocumentMedia(job, localDocument);
+    const mediaId = await this.uploadDocumentMedia(job, document);
     const url = buildMetaMessagesPath(job.metaPhoneNumberId);
     const payload = toMetaDocumentMessagePayload(job, mediaId);
 
@@ -53,18 +52,20 @@ export class MetaDocumentProvider {
 
   private async uploadDocumentMedia(
     job: SendDocumentMessageJobPayload,
-    localDocument: LocalDocumentFile,
+    document: LoadedDocument,
   ): Promise<string> {
     const mediaUrl = buildMetaMediaPath(job.metaPhoneNumberId);
-    const fileBuffer = await readFile(localDocument.path);
     const form = new FormData();
 
+    const standaloneBuffer = new ArrayBuffer(document.buffer.byteLength);
+    new Uint8Array(standaloneBuffer).set(document.buffer);
+
     form.append("messaging_product", "whatsapp");
-    form.append("type", localDocument.mimeType);
+    form.append("type", document.mimeType);
     form.append(
       "file",
-      new Blob([fileBuffer], { type: localDocument.mimeType }),
-      localDocument.filename,
+      new Blob([standaloneBuffer], { type: document.mimeType }),
+      job.document.filename,
     );
 
     const response = await this.client.post<MetaMediaUploadResponse>(

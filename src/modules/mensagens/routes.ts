@@ -6,6 +6,8 @@ import { postMensagemTextoSchema } from "./mensagem-texto/schema";
 import { postMensagemDocumentoSchema } from "./mensagem-documento/schema-documento";
 import { MensagensService } from "./mensagem-texto/service";
 import { MensagensDocumentoService } from "./mensagem-documento/service-documento";
+import { uploadDocumentMiddleware } from "../../shared/middleware/upload-document";
+import { parseMultipartPayload } from "../../shared/middleware/parse-multipart-payload";
 
 const mensagensRouter = Router();
 const mensagensController = new MensagensController(new MensagensService());
@@ -21,6 +23,8 @@ mensagensRouter.post(
 
 mensagensRouter.post(
   "/documento",
+  uploadDocumentMiddleware,
+  parseMultipartPayload,
   validateSchema(postMensagemDocumentoSchema),
   mensagensDocumentoController.postMensagemDocumento,
 );

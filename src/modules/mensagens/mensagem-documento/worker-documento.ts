@@ -10,9 +10,10 @@ import {
   RetryableQueueError,
 } from "../../../shared/queue/queue-errors";
 import {
-  LocalDocumentValidationError,
-  validateAndResolveLocalDocument,
-} from "./document-local-file";
+  StorageDocumentError,
+  downloadDocumentBuffer as defaultDownloadDocumentBuffer,
+  type LoadedDocument,
+} from "./storage-documento";
 import {
   SEND_DOCUMENT_MESSAGE_QUEUE_NAME,
   subscribeSendDocumentMessageQueue,
@@ -22,17 +23,22 @@ import {
   metaDocumentProvider as defaultMetaDocumentProvider,
 } from "./meta-provider-documento";
 import { computeBackoffMs } from "../mensagem-texto/worker";
+import type { DocumentStorageRef } from "../../../shared/queue/queue-connection.interface";
 
 /**
  * Worker consumidor da fila `send-document-message`:
+ *   - baixa o documento do Supabase Storage usando `payload.document.storage`;
  *   - dispara `MetaDocumentProvider.sendDocumentMessage`;
  *   - classifica erros em transitorios/definitivos (mesma politica de texto);
  *   - aplica backoff exponencial + jitter compartilhado com o worker de texto;
  *   - emite logs de lifecycle (processing, success, failed, retry_scheduled).
  */
 
+type DocumentDownloader = (ref: DocumentStorageRef) => Promise<LoadedDocument>;
+
 type HandleOptions = {
   provider?: MetaDocumentProvider;
+  downloadDocument?: DocumentDownloader;
 };
 
 export const handleSendDocumentMessageJob = async (
@@ -40,6 +46,8 @@ export const handleSendDocumentMessageJob = async (
   options: HandleOptions = {},
 ): Promise<void> => {
   const provider = options.provider ?? defaultMetaDocumentProvider;
+  const downloadDocument =
+    options.downloadDocument ?? defaultDownloadDocumentBuffer;
   const { payload, metadata } = job;
   const startedAt = Date.now();
 
@@ -54,15 +62,9 @@ export const handleSendDocumentMessageJob = async (
   });
 
   try {
-    const resolvedDocument = await validateAndResolveLocalDocument({
-      path: payload.document.path,
-      filename: payload.document.filename,
-    });
+    const loadedDocument = await downloadDocument(payload.document.storage);
 
-    const result = await provider.sendDocumentMessage(
-      payload,
-      resolvedDocument,
-    );
+    const result = await provider.sendDocumentMessage(payload, loadedDocument);
 
     logLifecycle("success", {
       requestId: payload.requestId,
@@ -79,8 +81,9 @@ export const handleSendDocumentMessageJob = async (
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
     const reason = error instanceof Error ? error.message : String(error);
-    if (error instanceof LocalDocumentValidationError) {
-      logLifecycle("failed", {
+
+    if (error instanceof StorageDocumentError) {
+      logLifecycle(error.retryable ? "retry_scheduled" : "failed", {
         requestId: payload.requestId,
         jobId: metadata.jobId,
         attempt: metadata.attempt,
@@ -90,10 +93,18 @@ export const handleSendDocumentMessageJob = async (
         apiKeyPrefix: payload.apiKeyPrefix,
         metaPhoneNumberId: payload.metaPhoneNumberId,
         reason,
-        reasonCode: "local_document_validation",
+        reasonCode: error.reasonCode,
+        ...(error.retryable
+          ? { delayMs: computeBackoffMs(metadata.attempt) }
+          : {}),
       });
 
-      throw new NonRetryableQueueError(reason, "local_document_validation");
+      if (!error.retryable) {
+        throw new NonRetryableQueueError(reason, error.reasonCode);
+      }
+
+      const delayMs = computeBackoffMs(metadata.attempt);
+      throw new RetryableQueueError(reason, delayMs, error.reasonCode);
     }
 
     const isMetaError = error instanceof MetaApiError;

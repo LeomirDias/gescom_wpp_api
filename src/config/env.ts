@@ -109,6 +109,31 @@ const envSchema = z
       .string()
       .transform((value) => value.trim())
       .pipe(z.string().url()),
+
+    // Supabase Storage
+    SUPABASE_URL: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().url()),
+    SUPABASE_SERVICE_ROLE_KEY: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().min(1)),
+    SUPABASE_ANON_KEY: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().min(1))
+      .optional(),
+    SUPABASE_DOCUMENTS_BUCKET: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().min(1))
+      .default("mensagens-documentos"),
+    DOCUMENT_UPLOAD_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(104857600),
   })
   .superRefine((env, context) => {
     if (env.QUEUE_DRIVER !== "redis") {

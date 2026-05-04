@@ -61,3 +61,29 @@ export class ConflictError extends AppError {
     });
   }
 }
+
+export class PayloadTooLargeError extends AppError {
+  public constructor(
+    message = "Payload excede o limite permitido",
+    code = "PAYLOAD_TOO_LARGE",
+  ) {
+    super({
+      statusCode: 413,
+      code,
+      message,
+    });
+  }
+}
+
+export class UnsupportedMediaTypeError extends AppError {
+  public constructor(
+    message = "Tipo de arquivo nao suportado",
+    code = "UNSUPPORTED_MEDIA_TYPE",
+  ) {
+    super({
+      statusCode: 415,
+      code,
+      message,
+    });
+  }
+}

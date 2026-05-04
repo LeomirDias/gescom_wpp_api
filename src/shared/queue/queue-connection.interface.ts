@@ -27,10 +27,17 @@ export type SendTextMessageJobPayload = {
   requestId: RequestWithId["requestId"];
 };
 
+export type DocumentStorageRef = {
+  bucket: string;
+  key: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
 export type DocumentJobAttachment = {
-  path: string;
   caption: string;
-  filename?: string;
+  filename: string;
+  storage: DocumentStorageRef;
 };
 
 export type SendDocumentMessageJobPayload = {

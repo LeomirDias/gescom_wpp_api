@@ -9,7 +9,7 @@
     "allowJs": true,
     "checkJs": false,
     "esModuleInterop": true,
-    "types": ["node"],
+    "types": ["node", "multer"],
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "skipLibCheck": true

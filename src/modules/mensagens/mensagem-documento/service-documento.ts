@@ -3,6 +3,7 @@ import { env } from "../../../config/env";
 import type { MessageAuthContext } from "../../../shared/middleware/auth-api-key";
 import type {
   DocumentJobAttachment,
+  DocumentStorageRef,
   SendDocumentMessageJobPayload,
 } from "../../../shared/queue/queue-connection.interface";
 import { logLifecycle } from "../../../shared/logger/lifecycle-logger";
@@ -13,6 +14,9 @@ import {
   buildIdempotencyKey,
   InMemoryIdempotencyStore,
 } from "../idempotency-store";
+import {
+  uploadDocumentBuffer as defaultUploadDocumentBuffer,
+} from "./storage-documento";
 
 type QueuePublication = {
   requestId: string;
@@ -23,21 +27,40 @@ type QueuePublication = {
 
 const DOCUMENT_IDEMPOTENCY_SCOPE = "document";
 
+export type DocumentUploadInput = {
+  buffer: Buffer;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type StorageUploader = (input: {
+  tenantId: string;
+  jobId: string;
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+}) => Promise<DocumentStorageRef>;
+
+const resolveFilename = (
+  metadataFilename: string | undefined,
+  originalFilename: string,
+): string => {
+  if (metadataFilename && metadataFilename.trim().length > 0) {
+    return metadataFilename.trim();
+  }
+  return originalFilename.trim() || "arquivo";
+};
+
 const buildDocumentAttachment = (
   input: PostMensagemDocumentoInput,
-): DocumentJobAttachment => {
-  const { document } = input;
-
-  const attachment: DocumentJobAttachment = {
-    path: document.path,
-    caption: document.caption,
-  };
-  if (document.filename) {
-    attachment.filename = document.filename;
-  }
-
-  return attachment;
-};
+  upload: DocumentUploadInput,
+  storageRef: DocumentStorageRef,
+): DocumentJobAttachment => ({
+  caption: input.document.caption,
+  filename: resolveFilename(input.document.filename, upload.originalFilename),
+  storage: storageRef,
+});
 
 export class MensagensDocumentoService {
   private readonly inFlightPublications = new Map<
@@ -53,15 +76,17 @@ export class MensagensDocumentoService {
       env.IDEMPOTENCY_TTL_MS,
       env.IDEMPOTENCY_CLEANUP_INTERVAL_MS,
     ),
+    private readonly uploadDocument: StorageUploader = defaultUploadDocumentBuffer,
   ) {}
 
   public async enfileirarMensagemDocumento(
     requestId: string,
     input: PostMensagemDocumentoInput,
+    upload: DocumentUploadInput,
     authContext: MessageAuthContext,
   ): Promise<QueuePublication> {
     if (!input.correlationId) {
-      return this.enqueueNewPublication(requestId, input, authContext);
+      return this.enqueueNewPublication(requestId, input, upload, authContext);
     }
 
     const key = buildIdempotencyKey(
@@ -83,6 +108,7 @@ export class MensagensDocumentoService {
       key,
       requestId,
       input,
+      upload,
       authContext,
     );
     const eventName =
@@ -104,6 +130,7 @@ export class MensagensDocumentoService {
     key: string,
     requestId: string,
     input: PostMensagemDocumentoInput,
+    upload: DocumentUploadInput,
     authContext: MessageAuthContext,
   ): Promise<QueuePublication> {
     const ongoing = this.inFlightPublications.get(key);
@@ -111,7 +138,12 @@ export class MensagensDocumentoService {
       return ongoing;
     }
 
-    const publishPromise = this.enqueueNewPublication(requestId, input, authContext);
+    const publishPromise = this.enqueueNewPublication(
+      requestId,
+      input,
+      upload,
+      authContext,
+    );
     this.inFlightPublications.set(key, publishPromise);
 
     try {
@@ -126,10 +158,24 @@ export class MensagensDocumentoService {
   private async enqueueNewPublication(
     requestId: string,
     input: PostMensagemDocumentoInput,
+    upload: DocumentUploadInput,
     authContext: MessageAuthContext,
   ): Promise<QueuePublication> {
     const now = new Date().toISOString();
     const jobId = randomUUID();
+    const filename = resolveFilename(
+      input.document.filename,
+      upload.originalFilename,
+    );
+
+    const storageRef = await this.uploadDocument({
+      tenantId: authContext.tenantId,
+      jobId,
+      filename,
+      mimeType: upload.mimeType,
+      buffer: upload.buffer,
+    });
+
     const payload: SendDocumentMessageJobPayload = {
       jobId,
       createdAt: now,
@@ -140,7 +186,7 @@ export class MensagensDocumentoService {
       sourceSystem: input.sourceSystem,
       correlationId: input.correlationId,
       requestId,
-      document: buildDocumentAttachment(input),
+      document: buildDocumentAttachment(input, upload, storageRef),
     };
 
     await this.publisher(payload);
