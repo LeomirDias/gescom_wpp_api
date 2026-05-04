@@ -1,0 +1,9 @@
+services:
+  app:
+    build:
+      target: production
+    image: gescom-wpp-service:1.0.0
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
