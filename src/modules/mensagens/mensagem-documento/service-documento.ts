@@ -8,7 +8,14 @@ import type {
 } from "../../../shared/queue/queue-connection.interface";
 import { logLifecycle } from "../../../shared/logger/lifecycle-logger";
 
-import type { PostMensagemDocumentoInput } from "./schema-documento";
+import type {
+  BatchDocumentItem,
+  BatchFailedItem,
+  BatchQueuedItem,
+  BatchResponseItem,
+  PostMensagemDocumentoBatchInput,
+  PostMensagemDocumentoBatchAcceptedOutput,
+} from "./schema-documento";
 import { publishSendDocumentMessage } from "./queue-documento";
 import {
   buildIdempotencyKey,
@@ -18,20 +25,17 @@ import {
   uploadDocumentBuffer as defaultUploadDocumentBuffer,
 } from "./storage-documento";
 
-type QueuePublication = {
-  requestId: string;
-  jobId: string;
-  status: "queued";
-  createdAt: string;
-};
-
-const DOCUMENT_IDEMPOTENCY_SCOPE = "document";
-
 export type DocumentUploadInput = {
   buffer: Buffer;
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
+};
+
+type QueuedItemPublication = {
+  jobId: string;
+  status: "queued";
+  createdAt: string;
 };
 
 type StorageUploader = (input: {
@@ -41,6 +45,8 @@ type StorageUploader = (input: {
   mimeType: string;
   buffer: Buffer;
 }) => Promise<DocumentStorageRef>;
+
+const DOCUMENT_IDEMPOTENCY_SCOPE = "document";
 
 const resolveFilename = (
   metadataFilename: string | undefined,
@@ -53,94 +59,171 @@ const resolveFilename = (
 };
 
 const buildDocumentAttachment = (
-  input: PostMensagemDocumentoInput,
+  item: BatchDocumentItem,
   upload: DocumentUploadInput,
   storageRef: DocumentStorageRef,
 ): DocumentJobAttachment => ({
-  caption: input.document.caption,
-  filename: resolveFilename(input.document.filename, upload.originalFilename),
+  caption: item.caption,
+  filename: resolveFilename(item.filename, upload.originalFilename),
   storage: storageRef,
 });
 
 export class MensagensDocumentoService {
   private readonly inFlightPublications = new Map<
     string,
-    Promise<QueuePublication>
+    Promise<QueuedItemPublication>
   >();
 
   public constructor(
     private readonly publisher: (
       payload: SendDocumentMessageJobPayload,
     ) => Promise<unknown> = publishSendDocumentMessage,
-    private readonly idempotencyStore = new InMemoryIdempotencyStore<QueuePublication>(
+    private readonly idempotencyStore = new InMemoryIdempotencyStore<QueuedItemPublication>(
       env.IDEMPOTENCY_TTL_MS,
       env.IDEMPOTENCY_CLEANUP_INTERVAL_MS,
     ),
     private readonly uploadDocument: StorageUploader = defaultUploadDocumentBuffer,
   ) {}
 
-  public async enfileirarMensagemDocumento(
+  public async enfileirarMensagemDocumentoBatch(
     requestId: string,
-    input: PostMensagemDocumentoInput,
+    input: PostMensagemDocumentoBatchInput,
+    uploads: DocumentUploadInput[],
+    authContext: MessageAuthContext,
+  ): Promise<PostMensagemDocumentoBatchAcceptedOutput> {
+    const batchId = randomUUID();
+
+    const itemResults = await Promise.allSettled(
+      input.documents.map((docItem, index) =>
+        this.processDocumentItem(
+          requestId,
+          batchId,
+          index,
+          input,
+          docItem,
+          uploads[index],
+          authContext,
+        ),
+      ),
+    );
+
+    const items: BatchResponseItem[] = itemResults.map((result, index) => {
+      const docItem = input.documents[index];
+      if (result.status === "fulfilled") {
+        const queuedItem: BatchQueuedItem = {
+          index,
+          correlationId: docItem.correlationId,
+          jobId: result.value.jobId,
+          status: "queued",
+          createdAt: result.value.createdAt,
+          ...(docItem.clientFileKey !== undefined
+            ? { clientFileKey: docItem.clientFileKey }
+            : {}),
+        };
+        return queuedItem;
+      }
+
+      const reason =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      const failedItem: BatchFailedItem = {
+        index,
+        correlationId: docItem.correlationId,
+        status: "failed",
+        error: reason,
+        ...(docItem.clientFileKey !== undefined
+          ? { clientFileKey: docItem.clientFileKey }
+          : {}),
+      };
+      return failedItem;
+    });
+
+    const totalQueued = items.filter((item) => item.status === "queued").length;
+    const totalFailed = items.filter((item) => item.status === "failed").length;
+
+    return {
+      requestId,
+      batchId,
+      totalQueued,
+      totalFailed,
+      items,
+    };
+  }
+
+  private async processDocumentItem(
+    requestId: string,
+    batchId: string,
+    index: number,
+    input: PostMensagemDocumentoBatchInput,
+    docItem: BatchDocumentItem,
     upload: DocumentUploadInput,
     authContext: MessageAuthContext,
-  ): Promise<QueuePublication> {
-    if (!input.correlationId) {
-      return this.enqueueNewPublication(requestId, input, upload, authContext);
-    }
-
+  ): Promise<QueuedItemPublication> {
     const key = buildIdempotencyKey(
       `${DOCUMENT_IDEMPOTENCY_SCOPE}:${input.sourceSystem}`,
-      input.correlationId,
+      docItem.correlationId,
     );
+
     const existing = this.idempotencyStore.get(key);
     if (existing) {
       logLifecycle("idempotency_hit", {
         requestId,
         jobId: existing.jobId,
-        correlationId: input.correlationId,
+        correlationId: docItem.correlationId,
         queueName: "send-document-message",
+        batchId,
+        batchIndex: index,
       });
-      return { ...existing, requestId };
+      return existing;
     }
 
-    const publication = await this.getOrCreatePublication(
+    const publication = await this.getOrCreateItemPublication(
       key,
       requestId,
+      batchId,
+      index,
       input,
+      docItem,
       upload,
       authContext,
     );
-    const eventName =
-      publication.requestId === requestId
-        ? "idempotency_miss"
-        : "idempotency_hit";
-    const output = { ...publication, requestId };
 
+    const eventName =
+      publication.jobId === publication.jobId ? "idempotency_miss" : "idempotency_hit";
     logLifecycle(eventName, {
       requestId,
-      jobId: output.jobId,
-      correlationId: input.correlationId,
+      jobId: publication.jobId,
+      correlationId: docItem.correlationId,
       queueName: "send-document-message",
+      batchId,
+      batchIndex: index,
     });
-    return output;
+
+    return publication;
   }
 
-  private async getOrCreatePublication(
+  private async getOrCreateItemPublication(
     key: string,
     requestId: string,
-    input: PostMensagemDocumentoInput,
+    batchId: string,
+    index: number,
+    input: PostMensagemDocumentoBatchInput,
+    docItem: BatchDocumentItem,
     upload: DocumentUploadInput,
     authContext: MessageAuthContext,
-  ): Promise<QueuePublication> {
+  ): Promise<QueuedItemPublication> {
     const ongoing = this.inFlightPublications.get(key);
     if (ongoing) {
       return ongoing;
     }
 
-    const publishPromise = this.enqueueNewPublication(
+    const publishPromise = this.enqueueNewItemPublication(
       requestId,
+      batchId,
+      index,
       input,
+      docItem,
       upload,
       authContext,
     );
@@ -155,18 +238,18 @@ export class MensagensDocumentoService {
     }
   }
 
-  private async enqueueNewPublication(
+  private async enqueueNewItemPublication(
     requestId: string,
-    input: PostMensagemDocumentoInput,
+    batchId: string,
+    index: number,
+    input: PostMensagemDocumentoBatchInput,
+    docItem: BatchDocumentItem,
     upload: DocumentUploadInput,
     authContext: MessageAuthContext,
-  ): Promise<QueuePublication> {
+  ): Promise<QueuedItemPublication> {
     const now = new Date().toISOString();
     const jobId = randomUUID();
-    const filename = resolveFilename(
-      input.document.filename,
-      upload.originalFilename,
-    );
+    const filename = resolveFilename(docItem.filename, upload.originalFilename);
 
     const storageRef = await this.uploadDocument({
       tenantId: authContext.tenantId,
@@ -184,15 +267,25 @@ export class MensagensDocumentoService {
       metaPhoneNumberId: authContext.metaPhoneNumberId,
       to: input.to,
       sourceSystem: input.sourceSystem,
-      correlationId: input.correlationId,
+      correlationId: docItem.correlationId,
       requestId,
-      document: buildDocumentAttachment(input, upload, storageRef),
+      document: buildDocumentAttachment(docItem, upload, storageRef),
     };
 
     await this.publisher(payload);
 
-    return {
+    logLifecycle("queued", {
       requestId,
+      jobId,
+      queueName: "send-document-message",
+      tenantId: authContext.tenantId,
+      apiKeyPrefix: authContext.apiKeyPrefix,
+      metaPhoneNumberId: authContext.metaPhoneNumberId,
+      batchId,
+      batchIndex: index,
+    });
+
+    return {
       jobId,
       status: "queued",
       createdAt: now,

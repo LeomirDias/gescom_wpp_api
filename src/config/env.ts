@@ -134,6 +134,7 @@ const envSchema = z
       .int()
       .positive()
       .default(104857600),
+    DOCUMENT_BATCH_MAX_FILES: z.coerce.number().int().positive().default(5),
   })
   .superRefine((env, context) => {
     if (env.QUEUE_DRIVER !== "redis") {

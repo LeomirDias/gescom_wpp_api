@@ -8,11 +8,12 @@ import {
 } from "../errors/app-error";
 
 /**
- * Middleware de upload do arquivo do endpoint POST /mensagens/documento.
+ * Middleware de upload de arquivos do endpoint POST /mensagens/documento.
  *
- * - Usa `memoryStorage`: o arquivo trafega como Buffer ate ser persistido no
+ * - Usa `memoryStorage`: cada arquivo trafega como Buffer ate ser persistido no
  *   Supabase Storage pelo service. Sem persistencia local em disco.
- * - Limite: `DOCUMENT_UPLOAD_MAX_BYTES` (default 100 MB) e exatamente 1 file.
+ * - Limite por arquivo: `DOCUMENT_UPLOAD_MAX_BYTES` (default 100 MB).
+ * - Limite de arquivos por requisicao: `DOCUMENT_BATCH_MAX_FILES` (default 10).
  * - `fileFilter` valida o MIME contra a lista de tipos suportados pelo
  *   contrato com a Meta (ver `schema-documento.ts`).
  */
@@ -28,13 +29,13 @@ const ALLOWED_DOCUMENT_MIME_TYPES = new Set<string>([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ]);
 
-const FILE_FIELD_NAME = "file";
+const FILES_FIELD_NAME = "files";
 
 const documentUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: env.DOCUMENT_UPLOAD_MAX_BYTES,
-    files: 1,
+    files: env.DOCUMENT_BATCH_MAX_FILES,
   },
   fileFilter: (_req, file, callback) => {
     if (!ALLOWED_DOCUMENT_MIME_TYPES.has(file.mimetype)) {
@@ -58,7 +59,7 @@ const translateMulterError = (error: MulterError): Error => {
   if (error.code === "LIMIT_UNEXPECTED_FILE") {
     return new ValidationError([
       {
-        path: error.field ?? FILE_FIELD_NAME,
+        path: error.field ?? FILES_FIELD_NAME,
         message: "Campo de arquivo nao esperado neste endpoint",
       },
     ]);
@@ -66,14 +67,14 @@ const translateMulterError = (error: MulterError): Error => {
   if (error.code === "LIMIT_FILE_COUNT") {
     return new ValidationError([
       {
-        path: FILE_FIELD_NAME,
-        message: "Apenas um arquivo e permitido por requisicao",
+        path: FILES_FIELD_NAME,
+        message: `Numero de arquivos excede o limite de ${env.DOCUMENT_BATCH_MAX_FILES} por requisicao`,
       },
     ]);
   }
   return new ValidationError([
     {
-      path: error.field ?? FILE_FIELD_NAME,
+      path: error.field ?? FILES_FIELD_NAME,
       message: error.message,
     },
   ]);
@@ -84,7 +85,7 @@ export const uploadDocumentMiddleware = (
   res: Response,
   next: NextFunction,
 ): void => {
-  const handler = documentUpload.single(FILE_FIELD_NAME);
+  const handler = documentUpload.array(FILES_FIELD_NAME, env.DOCUMENT_BATCH_MAX_FILES);
   handler(req, res, (err: unknown) => {
     if (!err) {
       next();
@@ -98,4 +99,4 @@ export const uploadDocumentMiddleware = (
   });
 };
 
-export { FILE_FIELD_NAME };
+export { FILES_FIELD_NAME };

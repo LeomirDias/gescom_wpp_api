@@ -3,7 +3,7 @@ import { validateSchema } from "../../shared/middleware/validate-schema";
 import { MensagensController } from "./mensagem-texto/controller";
 import { MensagensDocumentoController } from "./mensagem-documento/controller-documento";
 import { postMensagemTextoSchema } from "./mensagem-texto/schema";
-import { postMensagemDocumentoSchema } from "./mensagem-documento/schema-documento";
+import { postMensagemDocumentoBatchSchema } from "./mensagem-documento/schema-documento";
 import { MensagensService } from "./mensagem-texto/service";
 import { MensagensDocumentoService } from "./mensagem-documento/service-documento";
 import { uploadDocumentMiddleware } from "../../shared/middleware/upload-document";
@@ -25,7 +25,7 @@ mensagensRouter.post(
   "/documento",
   uploadDocumentMiddleware,
   parseMultipartPayload,
-  validateSchema(postMensagemDocumentoSchema),
+  validateSchema(postMensagemDocumentoBatchSchema),
   mensagensDocumentoController.postMensagemDocumento,
 );
 
