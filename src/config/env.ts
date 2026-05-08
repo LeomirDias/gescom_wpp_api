@@ -56,6 +56,11 @@ const envSchema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
     RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     REQUEST_TIMEOUT_MS: z.coerce.number().int().positive(),
+    JSON_BODY_LIMIT: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().min(1))
+      .default("5mb"),
     IDEMPOTENCY_TTL_MS: z.coerce.number().int().positive().default(600000),
     IDEMPOTENCY_CLEANUP_INTERVAL_MS: z.coerce
       .number()

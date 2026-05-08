@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler } from "express";
-import { AppError } from "./app-error";
+import { AppError, PayloadTooLargeError } from "./app-error";
 import { createApiErrorResponse } from "./api-error-response";
 
 type RequestWithOptionalId = {
@@ -12,6 +12,24 @@ const INTERNAL_SERVER_ERROR_MESSAGE = "Erro interno inesperado";
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const request = req as RequestWithOptionalId;
   const requestId = request.requestId ?? null;
+
+  if (
+    err &&
+    typeof err === "object" &&
+    "type" in err &&
+    err.type === "entity.too.large"
+  ) {
+    const payloadError = new PayloadTooLargeError();
+
+    res.status(payloadError.statusCode).json(
+      createApiErrorResponse({
+        requestId,
+        code: payloadError.code,
+        message: payloadError.message,
+      }),
+    );
+    return;
+  }
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json(

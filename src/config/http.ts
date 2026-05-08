@@ -30,7 +30,7 @@ const corsOptions: CorsOptions =
         origin: true,
       };
 
-const JSON_BODY_LIMIT = "100kb";
+const JSON_BODY_LIMIT = env.JSON_BODY_LIMIT;
 
 export const corsMiddleware = cors(corsOptions);
 export const jsonBodyParser = { limit: JSON_BODY_LIMIT };
