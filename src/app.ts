@@ -7,10 +7,23 @@ import { requestIdMiddleware } from "./shared/middleware/request-id";
 import { apiRouter } from "./routes";
 
 const app = express();
+const isJsonContentType = (contentType: string | undefined): boolean => {
+  if (!contentType) {
+    return false;
+  }
+
+  const normalized = contentType.toLowerCase();
+  return normalized.includes("application/json") || normalized.includes("+json");
+};
 
 app.use(helmet());
 app.use(corsMiddleware);
-app.use(express.json(jsonBodyParser));
+app.use(
+  express.json({
+    ...jsonBodyParser,
+    type: (req) => isJsonContentType(req.headers["content-type"]),
+  }),
+);
 app.use(requestIdMiddleware);
 
 app.get("/health", (_req, res) => {

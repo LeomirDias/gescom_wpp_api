@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler } from "express";
-import { AppError, PayloadTooLargeError } from "./app-error";
+import { AppError, PayloadTooLargeError, ValidationError } from "./app-error";
 import { createApiErrorResponse } from "./api-error-response";
 
 type RequestWithOptionalId = {
@@ -26,6 +26,33 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
         requestId,
         code: payloadError.code,
         message: payloadError.message,
+      }),
+    );
+    return;
+  }
+
+  if (
+    err &&
+    typeof err === "object" &&
+    "type" in err &&
+    err.type === "entity.parse.failed"
+  ) {
+    const parseError = new ValidationError(
+      [
+        {
+          path: "body",
+          message: "Corpo da requisicao contem JSON invalido",
+        },
+      ],
+      "Payload invalido",
+    );
+
+    res.status(parseError.statusCode).json(
+      createApiErrorResponse({
+        requestId,
+        code: parseError.code,
+        message: parseError.message,
+        details: parseError.details,
       }),
     );
     return;
