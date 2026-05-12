@@ -20,6 +20,7 @@ import {
   isRetryableQueueError,
 } from "./queue-errors";
 import { logLifecycle } from "../logger/lifecycle-logger";
+import { jobResultRegistry } from "../../modules/mensagens/job-result-registry";
 
 const DEAD_LETTER_SUFFIX = "-dead-letter";
 const SNAPSHOT_JOB_STATES: JobType[] = [
@@ -297,6 +298,12 @@ export class RedisQueueConnection implements QueueConnection {
       reason: reason.reason,
       reasonCode: reason.reasonCode,
     });
+
+    jobResultRegistry.rejectFailure(
+      job.metadata.jobId,
+      reason.reason,
+      reason.reasonCode,
+    );
   }
 
   public async snapshot(): Promise<QueueSnapshot> {

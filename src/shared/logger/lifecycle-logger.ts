@@ -3,6 +3,12 @@ import { getAuditStore } from "../audit/redis-audit-store";
 /**
  * Helper para logs de lifecycle do fluxo de envio de mensagem.
  * Formato unico permite reconstruir o ciclo completo por `requestId`/`jobId`.
+ *
+ * Politica de auditoria no Redis: para reduzir o consumo de comandos, apenas
+ * eventos terminais sao gravados (`success`, `failed`, `dead_letter_published`).
+ * Eventos intermediarios (`queued`, `processing`, `retry_scheduled`,
+ * `idempotency_hit`, `idempotency_miss`) continuam sendo emitidos para o console
+ * mas nao consomem o pipeline de auditoria.
  */
 
 export type LifecycleEvent =
@@ -40,6 +46,12 @@ const logForEvent: Record<LifecycleEvent, (payload: Record<string, unknown>) => 
   failed: (payload) => console.error(payload),
 };
 
+const AUDIT_PERSISTENT_EVENTS: ReadonlySet<LifecycleEvent> = new Set<LifecycleEvent>([
+  "success",
+  "failed",
+  "dead_letter_published",
+]);
+
 export const logLifecycle = (event: LifecycleEvent, fields: LifecycleFields): void => {
   const payload: Record<string, unknown> = {
     event: `lifecycle_${event}`,
@@ -48,6 +60,10 @@ export const logLifecycle = (event: LifecycleEvent, fields: LifecycleFields): vo
   };
 
   logForEvent[event](payload);
+
+  if (!AUDIT_PERSISTENT_EVENTS.has(event)) {
+    return;
+  }
 
   const auditStore = getAuditStore();
   if (!auditStore) {

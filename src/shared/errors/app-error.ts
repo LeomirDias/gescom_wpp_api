@@ -53,11 +53,32 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  public constructor(message = "Conflito de dados", code = "CONFLICT") {
+  public constructor(
+    message = "Conflito de dados",
+    code = "CONFLICT",
+    details?: ApiErrorDetails,
+  ) {
     super({
       statusCode: 409,
       code,
       message,
+      details,
+    });
+  }
+}
+
+/**
+ * Mesmo correlationId e mesmo conteudo ja enviados; esta requisicao nao aciona Meta de novo.
+ * HTTP 409 para nao confundir com 200 apos meta_http_response + lifecycle_success.
+ */
+export class IdempotencyReplayError extends AppError {
+  public constructor(details: ApiErrorDetails) {
+    super({
+      statusCode: 409,
+      code: "IDEMPOTENCY_REPLAY",
+      message:
+        "Este correlationId ja teve envio concluido na Meta; esta requisicao nao gerou novo envio nem logs meta_http_response/lifecycle_success. Consulte `details` para os ids do envio original.",
+      details,
     });
   }
 }
@@ -83,6 +104,27 @@ export class UnsupportedMediaTypeError extends AppError {
     super({
       statusCode: 415,
       code,
+      message,
+    });
+  }
+}
+
+export class SendFailedError extends AppError {
+  public constructor(reason: string, reasonCode?: string) {
+    super({
+      statusCode: 502,
+      code: "SEND_FAILED",
+      message: reason,
+      details: reasonCode ? [{ path: "reasonCode", message: reasonCode }] : undefined,
+    });
+  }
+}
+
+export class GatewayTimeoutError extends AppError {
+  public constructor(message = "Envio nao concluido no tempo limite") {
+    super({
+      statusCode: 504,
+      code: "SEND_TIMEOUT",
       message,
     });
   }

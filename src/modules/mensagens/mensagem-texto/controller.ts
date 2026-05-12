@@ -21,6 +21,6 @@ export class MensagensController {
       typedRequest.authContext,
     );
 
-    res.status(202).json(response);
+    res.status(200).json(response);
   };
 }

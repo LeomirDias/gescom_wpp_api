@@ -33,9 +33,11 @@ export const postMensagemTextoSchema = z
 
 export type PostMensagemTextoInput = z.infer<typeof postMensagemTextoSchema>;
 
-export type PostMensagemTextoAcceptedOutput = {
+export type PostMensagemTextoSentOutput = {
   requestId: string;
   jobId: string;
-  status: "queued";
+  status: "sent";
   createdAt: string;
+  waMessageId: string;
+  waContactId: string;
 };

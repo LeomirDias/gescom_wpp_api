@@ -67,7 +67,8 @@ const envSchema = z
       .int()
       .positive()
       .default(60000),
-    QUEUE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+    QUEUE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
+    SYNC_SEND_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
     DEAD_LETTER_RETENTION_MS: z.coerce
       .number()
       .int()

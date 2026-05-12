@@ -14,6 +14,20 @@ export const buildIdempotencyKey = (
   return `${normalizeKeyPart(sourceSystem)}:${normalizeKeyPart(correlationId)}`;
 };
 
+/** Chave por tenant + canal para evitar colisao entre inquilinos e misturar texto/documento. */
+export const buildTenantMessageIdempotencyKey = (
+  tenantId: string,
+  channel: "text" | "document",
+  sourceSystem: string,
+  correlationId: string,
+): string =>
+  [
+    channel,
+    normalizeKeyPart(tenantId),
+    normalizeKeyPart(sourceSystem),
+    normalizeKeyPart(correlationId),
+  ].join(":");
+
 export class InMemoryIdempotencyStore<TResponse> {
   private readonly entries = new Map<string, IdempotencyEntry<TResponse>>();
   private readonly cleanupTimer: NodeJS.Timeout;

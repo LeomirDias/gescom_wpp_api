@@ -14,6 +14,7 @@ import {
   isRetryableQueueError,
 } from "./queue-errors";
 import { logLifecycle } from "../logger/lifecycle-logger";
+import { jobResultRegistry } from "../../modules/mensagens/job-result-registry";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_DEAD_LETTER_RETENTION_MS = 86_400_000;
@@ -236,6 +237,12 @@ export class LocalMemoryQueueConnection implements QueueConnection {
       reason: reason.reason,
       reasonCode: reason.reasonCode,
     });
+
+    jobResultRegistry.rejectFailure(
+      job.metadata.jobId,
+      reason.reason,
+      reason.reasonCode,
+    );
   }
 
   public async shutdown(): Promise<void> {

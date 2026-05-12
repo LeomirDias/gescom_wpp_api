@@ -24,6 +24,7 @@ import {
 } from "./meta-provider-documento";
 import { computeBackoffMs } from "../mensagem-texto/worker";
 import type { DocumentStorageRef } from "../../../shared/queue/queue-connection.interface";
+import { jobResultRegistry } from "../job-result-registry";
 
 /**
  * Worker consumidor da fila `send-document-message`:
@@ -78,6 +79,8 @@ export const handleSendDocumentMessageJob = async (
       waMessageId: result.waMessageId,
       waContactId: result.waContactId,
     });
+
+    jobResultRegistry.resolveSuccess(metadata.jobId, result);
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
     const reason = error instanceof Error ? error.message : String(error);

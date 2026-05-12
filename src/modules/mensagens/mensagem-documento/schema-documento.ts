@@ -82,13 +82,15 @@ export type PostMensagemDocumentoBatchInput = z.infer<
   typeof postMensagemDocumentoBatchSchema
 >;
 
-export type BatchQueuedItem = {
+export type BatchSentItem = {
   index: number;
   clientFileKey?: string;
   correlationId: string;
   jobId: string;
-  status: "queued";
+  status: "sent";
   createdAt: string;
+  waMessageId: string;
+  waContactId: string;
 };
 
 export type BatchFailedItem = {
@@ -97,14 +99,15 @@ export type BatchFailedItem = {
   correlationId: string;
   status: "failed";
   error: string;
+  errorCode?: string;
 };
 
-export type BatchResponseItem = BatchQueuedItem | BatchFailedItem;
+export type BatchResponseItem = BatchSentItem | BatchFailedItem;
 
-export type PostMensagemDocumentoBatchAcceptedOutput = {
+export type PostMensagemDocumentoBatchOutput = {
   requestId: string;
   batchId: string;
-  totalQueued: number;
+  totalSent: number;
   totalFailed: number;
   items: BatchResponseItem[];
 };

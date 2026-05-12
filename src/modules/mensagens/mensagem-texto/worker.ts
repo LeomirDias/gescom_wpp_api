@@ -17,6 +17,7 @@ import {
   MetaProvider,
   metaProvider as defaultMetaProvider,
 } from "./meta-provider";
+import { jobResultRegistry } from "../job-result-registry";
 
 /**
  * Worker consumidor da fila `send-text-message`:
@@ -76,6 +77,8 @@ export const handleSendTextMessageJob = async (
       waMessageId: result.waMessageId,
       waContactId: result.waContactId,
     });
+
+    jobResultRegistry.resolveSuccess(metadata.jobId, result);
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
     const reason = error instanceof Error ? error.message : String(error);
