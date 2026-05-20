@@ -129,3 +129,47 @@ export class GatewayTimeoutError extends AppError {
     });
   }
 }
+
+/**
+ * Batch de documentos com um ou mais itens que nao concluiram envio na Meta.
+ * HTTP 502 para nao retornar 200 quando `totalFailed > 0`.
+ */
+export class BatchSendFailedError extends AppError {
+  public constructor(
+    totalSent: number,
+    totalFailed: number,
+    batchId: string,
+    failedItems: Array<{
+      index: number;
+      correlationId: string;
+      error: string;
+      errorCode?: string;
+    }>,
+  ) {
+    const details: ApiErrorDetails = [
+      { path: "batchId", message: batchId },
+      { path: "totalSent", message: String(totalSent) },
+      { path: "totalFailed", message: String(totalFailed) },
+      ...failedItems.flatMap((item) => {
+        const entries: ApiErrorDetails = [
+          { path: `items[${item.index}].correlationId`, message: item.correlationId },
+          { path: `items[${item.index}].error`, message: item.error },
+        ];
+        if (item.errorCode) {
+          entries.push({
+            path: `items[${item.index}].errorCode`,
+            message: item.errorCode,
+          });
+        }
+        return entries;
+      }),
+    ];
+
+    super({
+      statusCode: 502,
+      code: "BATCH_SEND_FAILED",
+      message: `Batch com falha: ${totalFailed} de ${totalSent + totalFailed} documento(s) nao enviado(s)`,
+      details,
+    });
+  }
+}

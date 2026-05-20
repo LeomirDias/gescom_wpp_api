@@ -79,7 +79,12 @@ export class MetaDocumentProvider {
       },
     );
 
-    return response.data.id;
+    const mediaId = response.data?.id?.trim();
+    if (!mediaId) {
+      throw new Error("Resposta da Meta upload nao contem media id");
+    }
+
+    return mediaId;
   }
 }
 

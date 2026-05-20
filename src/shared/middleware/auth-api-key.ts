@@ -8,7 +8,7 @@ import {
   tenantMetaCredentials,
   tenants,
 } from "../../db/schema";
-import { NotFoundError, UnauthorizedError } from "../errors/app-error";
+import { AppError, NotFoundError, UnauthorizedError } from "../errors/app-error";
 
 const API_KEY_HEADER = "x-api-key";
 
@@ -210,9 +210,15 @@ export const authApiKeyMiddleware = (
         reason: error instanceof Error ? error.message : String(error),
         type: auditType,
       });
-      next(new UnauthorizedError());
+
+      if (error instanceof AppError) {
+        next(error);
+        return;
+      }
+
+      next(error);
     }
   };
 
-  void run();
+  void run().catch(next);
 };

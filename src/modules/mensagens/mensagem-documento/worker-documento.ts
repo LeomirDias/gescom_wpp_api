@@ -6,6 +6,7 @@ import type {
   SendDocumentMessageJobPayload,
 } from "../../../shared/queue/queue-connection.interface";
 import {
+  isRetryableWorkerError,
   NonRetryableQueueError,
   RetryableQueueError,
 } from "../../../shared/queue/queue-errors";
@@ -111,7 +112,7 @@ export const handleSendDocumentMessageJob = async (
     }
 
     const isMetaError = error instanceof MetaApiError;
-    const isRetryable = isMetaError ? error.isRetryable : true;
+    const isRetryable = isRetryableWorkerError(error);
 
     if (!isRetryable) {
       logLifecycle("failed", {

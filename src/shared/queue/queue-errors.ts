@@ -1,3 +1,5 @@
+import { MetaApiError } from "../errors/meta-errors";
+
 /**
  * Erros neutros para o contrato de fila.
  *
@@ -38,4 +40,13 @@ export const isNonRetryableQueueError = (
   error: unknown,
 ): error is NonRetryableQueueError => {
   return error instanceof NonRetryableQueueError;
+};
+
+/**
+ * Apenas falhas transientes da Meta (ou rede/timeout) devem ser reprocessadas.
+ * Erros de parsing/validacao de resposta nao devem mascarar falha com retries
+ * ate estourar timeout HTTP sem `rejectFailure` em alguns cenarios.
+ */
+export const isRetryableWorkerError = (error: unknown): boolean => {
+  return error instanceof MetaApiError && error.isRetryable;
 };

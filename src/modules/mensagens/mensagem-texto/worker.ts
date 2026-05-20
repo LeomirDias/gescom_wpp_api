@@ -6,6 +6,7 @@ import type {
   SendTextMessageJobPayload,
 } from "../../../shared/queue/queue-connection.interface";
 import {
+  isRetryableWorkerError,
   NonRetryableQueueError,
   RetryableQueueError,
 } from "../../../shared/queue/queue-errors";
@@ -83,7 +84,7 @@ export const handleSendTextMessageJob = async (
     const durationMs = Date.now() - startedAt;
     const reason = error instanceof Error ? error.message : String(error);
     const isMetaError = error instanceof MetaApiError;
-    const isRetryable = isMetaError ? error.isRetryable : true;
+    const isRetryable = isRetryableWorkerError(error);
 
     if (!isRetryable) {
       logLifecycle("failed", {

@@ -8,7 +8,12 @@ import type {
 } from "../../../shared/queue/queue-connection.interface";
 import { logLifecycle } from "../../../shared/logger/lifecycle-logger";
 import type { ApiErrorDetails } from "../../../shared/errors/api-error-response";
-import { AppError, ConflictError, IdempotencyReplayError } from "../../../shared/errors/app-error";
+import {
+  AppError,
+  BatchSendFailedError,
+  ConflictError,
+  IdempotencyReplayError,
+} from "../../../shared/errors/app-error";
 import { fingerprintMensagemDocumentoItem } from "../idempotency-payload";
 
 import type {
@@ -187,6 +192,19 @@ export class MensagensDocumentoService {
 
     const totalSent = items.filter((item) => item.status === "sent").length;
     const totalFailed = items.filter((item) => item.status === "failed").length;
+
+    if (totalFailed > 0) {
+      const failedItems = items
+        .filter((item): item is BatchFailedItem => item.status === "failed")
+        .map((item) => ({
+          index: item.index,
+          correlationId: item.correlationId,
+          error: item.error,
+          ...(item.errorCode ? { errorCode: item.errorCode } : {}),
+        }));
+
+      throw new BatchSendFailedError(totalSent, totalFailed, batchId, failedItems);
+    }
 
     return {
       requestId,

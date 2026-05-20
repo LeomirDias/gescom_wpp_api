@@ -49,6 +49,8 @@ export const toMetaTextMessagePayload = (
   },
 });
 
+const FAILED_MESSAGE_STATUSES = new Set(["failed", "undelivered", "rejected"]);
+
 export const fromMetaSendMessageResponse = (
   response: MetaSendMessageResponse,
 ): SendTextMessageResult => {
@@ -57,6 +59,11 @@ export const fromMetaSendMessageResponse = (
 
   if (!firstMessage?.id) {
     throw new Error("Resposta da Meta nao contem messages[0].id");
+  }
+
+  const messageStatus = firstMessage.message_status?.trim().toLowerCase();
+  if (messageStatus && FAILED_MESSAGE_STATUSES.has(messageStatus)) {
+    throw new Error(`Meta retornou message_status=${firstMessage.message_status}`);
   }
 
   if (!firstContact?.wa_id) {

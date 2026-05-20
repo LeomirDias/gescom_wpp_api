@@ -146,6 +146,10 @@ export class LocalMemoryQueueConnection implements QueueConnection {
 
     const enqueueRetry = () => {
       if (this.isShuttingDown) {
+        void this.deadLetter(retryJob, {
+          reason: "Fila em shutdown; retry descartado",
+          reasonCode: "queue_shutdown",
+        });
         return;
       }
 
